@@ -1,3 +1,4 @@
 rust-server/target
 rust-server/Cargo.lock
 .vscode
+go-client/rust-chat
