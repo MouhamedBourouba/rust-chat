@@ -1,0 +1,3 @@
+rust-server/target
+rust-server/Cargo.lock
+.vscode
