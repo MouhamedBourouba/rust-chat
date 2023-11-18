@@ -20,13 +20,13 @@ func main() {
 		fmt.Scanln(&input)
 
 		if input == "quit" {
+			fmt.Println("Exiting chat room ...")
 			break
 		}
 
 		_, err = conn.Write([]byte(input))
-
 		if err != nil {
-			print("Cloud not send message")
+			fmt.Println("ERORR:", err.Error())
 			break
 		}
 
