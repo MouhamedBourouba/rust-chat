@@ -19,6 +19,7 @@ func main() {
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
+		print("Enter Message: ")
 		input, err := reader.ReadString('\n')
 		input = strings.TrimSpace(input)
 

@@ -1,16 +1,21 @@
 use std::{
     io::Read,
     net::{TcpListener, TcpStream},
+    sync::mpsc::{channel, Receiver, Sender},
 };
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:8080").expect("Could not start TCP connection");
+    let (msg_sender, msg_reciever) = channel();
+
+    std::thread::spawn(|| server(msg_reciever));
 
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                let cloned_sender = msg_sender.clone();
                 std::thread::spawn(|| {
-                    handle_client(stream);
+                    client(stream, cloned_sender);
                 });
             }
             Err(err) => {
@@ -20,19 +25,44 @@ fn main() {
     }
 }
 
-fn handle_client(mut stream: TcpStream) {
-    println!("New client, ip: {}", stream.peer_addr().unwrap());
+fn server(reciever: Receiver<Message>) {
     loop {
-        let mut buffer = [0; 512];
+        let message = reciever.recv();
+        match message {
+            Ok(message) => match message {
+                Message::Message => {
+                    println!("Message Sent")
+                }
+                Message::NewConnection => {
+                    println!("New Connection")
+                }
+                Message::ConnectionClosed => {
+                    println!("Connection Closed")
+                }
+            },
+            Err(_) => todo!(),
+        }
+    }
+}
+
+fn client(mut stream: TcpStream, sender: Sender<Message>) {
+    sender
+        .send(Message::NewConnection)
+        .expect("Error sending message in channel");
+
+    loop {
+        let mut buffer = [0; 1024];
         match stream.read(&mut buffer) {
             Ok(bytes_read) => {
                 if bytes_read == 0 {
-                    println!("Connection closed by client");
+                    sender
+                        .send(Message::ConnectionClosed)
+                        .expect("Error sending message in channel");
                     break;
                 }
-
-                let received_message = String::from_utf8_lossy(&buffer[..bytes_read]);
-                println!("Received message: {}", received_message);
+                sender
+                    .send(Message::Message)
+                    .expect("Error sending message in channel");
             }
             Err(err) => {
                 eprintln!("Error reading from client: {}", err);
@@ -40,4 +70,10 @@ fn handle_client(mut stream: TcpStream) {
             }
         }
     }
+}
+
+enum Message {
+    Message,
+    NewConnection,
+    ConnectionClosed,
 }
