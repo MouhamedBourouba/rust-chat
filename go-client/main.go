@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net"
+	"os"
+	"strings"
 )
 
 func main() {
@@ -13,13 +16,13 @@ func main() {
 	}
 	defer conn.Close()
 
+	reader := bufio.NewReader(os.Stdin)
+
 	for {
-		var input string
+		input, err := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
 
-		fmt.Print("Please write message: ")
-		fmt.Scanln(&input)
-
-		if input == "quit" {
+		if input == "quit" || err != nil {
 			fmt.Println("Exiting chat room ...")
 			break
 		}
