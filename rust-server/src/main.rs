@@ -1,7 +1,11 @@
 use std::{
-    io::Read,
-    net::{TcpListener, TcpStream},
-    sync::mpsc::{channel, Receiver, Sender},
+    collections::HashMap,
+    io::{Read, Write},
+    net::{SocketAddr, TcpListener, TcpStream},
+    sync::{
+        mpsc::{channel, Receiver, Sender},
+        Arc,
+    },
 };
 
 fn main() {
@@ -13,6 +17,7 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                let stream = Arc::new(stream);
                 let cloned_sender = msg_sender.clone();
                 std::thread::spawn(|| {
                     client(stream, cloned_sender);
@@ -25,18 +30,29 @@ fn main() {
     }
 }
 
-fn server(reciever: Receiver<Message>) {
+fn server(reciever: Receiver<Event>) {
+    let mut clinets = HashMap::<SocketAddr, Arc<TcpStream>>::new();
+
     loop {
         let message = reciever.recv();
         match message {
             Ok(message) => match message {
-                Message::Message => {
-                    println!("Message Sent")
+                Event::NewMessage { content, ip } => {
+                    println!(
+                        "Message recieved: {}:{}, {}",
+                        ip.ip().to_string(),
+                        ip.port().to_string(),
+                        std::str::from_utf8(&content).unwrap()
+                    );
+                    for (_addr, stream) in &clinets {
+                        stream.as_ref().write_all(&content).unwrap();
+                    }
                 }
-                Message::NewConnection => {
-                    println!("New Connection")
+                Event::NewConnection { stream, addr } => {
+                    println!("New Connection");
+                    clinets.insert(addr, stream);
                 }
-                Message::ConnectionClosed => {
+                Event::ConnectionClosed => {
                     println!("Connection Closed")
                 }
             },
@@ -45,24 +61,31 @@ fn server(reciever: Receiver<Message>) {
     }
 }
 
-fn client(mut stream: TcpStream, sender: Sender<Message>) {
-    sender
-        .send(Message::NewConnection)
-        .expect("Error sending message in channel");
+fn client(stream: Arc<TcpStream>, sender: Sender<Event>) {
+    let send = |message: Event| {
+        sender
+            .send(message)
+            .expect("Error sending message in channel");
+    };
+
+    send(Event::NewConnection {
+        stream: stream.clone(),
+        addr: stream.peer_addr().unwrap(),
+    });
 
     loop {
         let mut buffer = [0; 1024];
-        match stream.read(&mut buffer) {
+
+        match stream.as_ref().read(&mut buffer) {
             Ok(bytes_read) => {
                 if bytes_read == 0 {
-                    sender
-                        .send(Message::ConnectionClosed)
-                        .expect("Error sending message in channel");
+                    send(Event::ConnectionClosed);
                     break;
                 }
-                sender
-                    .send(Message::Message)
-                    .expect("Error sending message in channel");
+                send(Event::NewMessage {
+                    content: Box::new(buffer),
+                    ip: stream.peer_addr().unwrap(),
+                });
             }
             Err(err) => {
                 eprintln!("Error reading from client: {}", err);
@@ -72,8 +95,14 @@ fn client(mut stream: TcpStream, sender: Sender<Message>) {
     }
 }
 
-enum Message {
-    Message,
-    NewConnection,
+enum Event {
+    NewMessage {
+        content: Box<[u8]>,
+        ip: SocketAddr,
+    },
+    NewConnection {
+        stream: Arc<TcpStream>,
+        addr: SocketAddr,
+    },
     ConnectionClosed,
 }
